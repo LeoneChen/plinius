@@ -150,8 +150,8 @@ Rom_Cpp_Objects := RomulusLogSGX.o malloc.o ThreadRegistry.o
 Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/mirroring/*.cpp) $(wildcard Enclave/crypto/*.cpp) 
 Enclave_Include_Paths := -IInclude -IEnclave -IEnclave/romulus -IEnclave/romulus/romuluslog -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx 
 
-Enclave_C_Flags := -nostdinc -fvisibility=hidden -fpie -fstack-protector $(Enclave_Include_Paths)
-Enclave_Cpp_Flags := $(Enclave_C_Flags) $(SGX_COMMON_CXXFLAGS) -nostdinc++
+Enclave_C_Flags := -fvisibility=hidden -fpie -fstack-protector $(Enclave_Include_Paths)
+Enclave_Cpp_Flags := $(Enclave_C_Flags) $(SGX_COMMON_CXXFLAGS)
 Enclave_C_Flags += $(SGX_COMMON_CFLAGS)
 
 # Enable the security flags
@@ -172,13 +172,13 @@ Enclave_Security_Link_Flags := -Wl,-z,relro,-z,now,-z,noexecstack
 #  -Wl,--no-whole-archive with -l$(TRTS_LIBRARY) and before the linker options 
 #  for other libraries (e.g., -lsgx_tstdc).
 Enclave_Link_Flags := $(Enclave_Security_Link_Flags) \
-    -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
-	-Wl,--whole-archive  -l$(Trts_Library_Name) -Wl,--no-whole-archive \
-	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
-	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
-	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
-	-Wl,--defsym,__ImageBase=0 \
-	-Wl,--version-script=Enclave/Enclave.lds
+    -L$(SGX_LIBRARY_PATH) \
+	-Wl,--whole-archive -lSGXSanRTEnclave -l$(Trts_Library_Name) -Wl,--no-whole-archive \
+	-Wl,--start-group -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+	-Wl,-Bsymbolic \
+	-Wl,-eenclave_entry -Wl,--export-dynamic  \
+	-Wl,--defsym,__ImageBase=0
+#	-Wl,--version-script=Enclave/Enclave.lds
 
 Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o)
 
@@ -194,6 +194,65 @@ endif
 endif
 endif
 
+ifeq ($(KAFL_FUZZER), 1)
+App_Link_Flags += \
+	-ldl \
+	-Wl,-rpath=$(SGX_LIBRARY_PATH) \
+	-Wl,-whole-archive -lSGXSanRTApp -Wl,-no-whole-archive \
+	-lSGXFuzzerRT \
+	-lcrypto \
+	-lboost_program_options \
+	-rdynamic \
+	-lnyx_agent
+Enclave_C_Flags += \
+	-fPIC \
+	-fno-discard-value-names \
+	-flegacy-pass-manager \
+	-Xclang -load -Xclang $(SGX_SDK)/lib64/libSGXSanPass.so
+Enclave_Cpp_Flags += \
+	-fPIC \
+	-fno-discard-value-names \
+	-flegacy-pass-manager \
+	-Xclang -load -Xclang $(SGX_SDK)/lib64/libSGXSanPass.so
+Enclave_Link_Flags += -shared
+else
+App_C_Flags += \
+	-fsanitize-coverage=inline-8bit-counters,bb,no-prune,pc-table,trace-cmp \
+	-fprofile-instr-generate \
+	-fcoverage-mapping
+App_Cpp_Flags += \
+	-fsanitize-coverage=inline-8bit-counters,bb,no-prune,pc-table,trace-cmp \
+	-fprofile-instr-generate \
+	-fcoverage-mapping
+App_Link_Flags += \
+	-ldl \
+	-Wl,-rpath=$(SGX_LIBRARY_PATH) \
+	-Wl,-whole-archive -lSGXSanRTApp -Wl,-no-whole-archive \
+	-lSGXFuzzerRT \
+	-lcrypto \
+	-lboost_program_options \
+	-rdynamic \
+	-fuse-ld=${LD} \
+	-fprofile-instr-generate
+Enclave_C_Flags += \
+	-fPIC \
+	-fno-discard-value-names \
+	-flegacy-pass-manager \
+	-Xclang -load -Xclang $(SGX_SDK)/lib64/libSGXSanPass.so \
+	-fsanitize-coverage=inline-8bit-counters,bb,no-prune,pc-table,trace-cmp \
+	-fprofile-instr-generate \
+	-fcoverage-mapping
+Enclave_Cpp_Flags += \
+	-fPIC \
+	-fno-discard-value-names \
+	-flegacy-pass-manager \
+	-Xclang -load -Xclang $(SGX_SDK)/lib64/libSGXSanPass.so \
+	-fsanitize-coverage=inline-8bit-counters,bb,no-prune,pc-table,trace-cmp \
+	-fprofile-instr-generate \
+	-fcoverage-mapping
+Enclave_Link_Flags += -fuse-ld=${LD} -fprofile-instr-generate -shared
+endif
+
 romulus := $(Rom_Cpp_Objects)
 
 .PHONY: all run obj
@@ -207,7 +266,7 @@ all: obj $(App_Name) $(romulus) $(Enclave_Name)
 	@echo "You can also sign the enclave using an external signing tool."
 	@echo "To build the project in simulation mode set SGX_MODE=SIM. To build the project in prerelease mode set SGX_PRERELEASE=1 and SGX_MODE=HW."
 else
-all: obj $(App_Name) $(romulus) $(Signed_Enclave_Name)
+all: obj $(App_Name) $(romulus) $(Enclave_Name)
 endif
 
 run: all
@@ -224,20 +283,22 @@ obj:
 
 
 App/Enclave_u.h: $(SGX_EDGER8R) Enclave/Enclave.edl	
-	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
+	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include --dump-parse ../Enclave.edl.json
 	@echo "GEN  =>  $@"
 
 App/Enclave_u.c: App/Enclave_u.h
 
 App/Enclave_u.o: App/Enclave_u.c
-	@$(CC) $(App_C_Flags) -c $< -o $@
+	@$(CC) $(App_C_Flags) -c $< -o $@ \
+	-flegacy-pass-manager \
+	-Xclang -load -Xclang $(SGX_SDK)/lib64/libSGXFuzzerPass.so
 	@echo "CC   <=  $<"
 	
-$(DNET_OUT_BASE)/obj/%.o: $(DNET_OUT_BASE)/src/%.c $(DNET_DEPS_OUT)
+$(DNET_OUT_BASE)/obj/%.o: $(DNET_OUT_BASE)/src/%.c $(DNET_DEPS_OUT) App/Enclave_u.h
 	@echo "Creating darknet c objects out.."
 	@$(CC) $(DNET_INC_OUT) $(App_C_Flags) -c $< -o $@
 
-$(DNET_OUT_BASE)/obj/%.o: $(DNET_OUT_BASE)/src/%.cpp $(DNET_DEPS_OUT)
+$(DNET_OUT_BASE)/obj/%.o: $(DNET_OUT_BASE)/src/%.cpp $(DNET_DEPS_OUT) App/Enclave_u.h
 	@echo "Creating darknet cpp objects out.."
 	@$(CXX) $(DNET_INC_OUT) $(App_Cpp_Flags) -c $< -o $@
 
@@ -275,12 +336,12 @@ Enclave/%.o: Enclave/%.cpp Enclave/Enclave_t.h
 	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-$(DNET_IN_BASE)/obj/%.o : $(DNET_IN_BASE)/src/%.c $(DNET_DEPS_IN)
+$(DNET_IN_BASE)/obj/%.o : $(DNET_IN_BASE)/src/%.c $(DNET_DEPS_IN) Enclave/Enclave_t.h
 	@echo "Creating darknet objects in enclave.."
 	@$(CC) $(DNET_INC_IN) $(Enclave_C_Flags) -c $< -o $@
 
 
-$(DNET_TRAINER_BASE)/%.o: $(DNET_TRAINER_BASE)/%.cpp $(DNET_DEPS_IN)
+$(DNET_TRAINER_BASE)/%.o: $(DNET_TRAINER_BASE)/%.cpp $(DNET_DEPS_IN) Enclave/Enclave_t.h
 	@echo "Creating trainer object in enclave.."
 	@$(CXX) $(DNET_INC_IN) $(Enclave_Cpp_Flags) -c $< -o $@
 

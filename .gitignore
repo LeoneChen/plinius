@@ -1,0 +1,8 @@
+*.o
+Enclave_u.c
+Enclave_u.h
+Enclave_t.c
+Enclave_t.h
+Enclave.edl.json
+plinius
+enclave.so
