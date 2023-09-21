@@ -1,3 +1,4 @@
+#include "kafl_hc.h"
 
 #include "dnet_sgx_utils.h"
 #include "darknet.h"
@@ -46,6 +47,7 @@ data data_alloc(size_t batch_size)
 }
 void ecall_set_data(data *data)
 {
+    LogEnter(__func__);
     train = *data;
 }
 //removes pmem net
@@ -119,6 +121,7 @@ void get_pm_batch()
 }
 void ecall_trainer(list *sections, data *training_data, int bsize, comm_info *info)
 {
+    LogEnter(__func__);
     CHECK_REF_POINTER(sections, sizeof(list));
     CHECK_REF_POINTER(training_data, sizeof(data));
     CHECK_REF_POINTER(info, sizeof(comm_info));
@@ -235,6 +238,7 @@ void train_mnist(list *sections, data *training_data, int pmem)
 
 void ecall_tester(list *sections, data *test_data, int pmem)
 {
+    LogEnter(__func__);
     CHECK_REF_POINTER(sections, sizeof(list));
     CHECK_REF_POINTER(test_data, sizeof(data));
     /**
@@ -247,6 +251,7 @@ void ecall_tester(list *sections, data *test_data, int pmem)
 
 void ecall_classify(list *sections, list *labels, image *im)
 {
+    LogEnter(__func__);
     CHECK_REF_POINTER(sections, sizeof(list));
     CHECK_REF_POINTER(labels, sizeof(list));
     CHECK_REF_POINTER(im, sizeof(image));

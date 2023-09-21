@@ -1,0 +1,9 @@
+*.o
+Enclave_u.c
+Enclave_u.h
+Enclave_t.c
+Enclave_t.h
+plinius
+*.so
+enclave.signed.so.*
+ghidra

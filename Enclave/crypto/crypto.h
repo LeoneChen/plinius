@@ -14,7 +14,7 @@
 #include <stdlib.h>
 
 
-#define BUFLEN 4 * 1024 * 1024 //1MB: increase this if you have to encrypt larger buffers
+#define BUFLEN 1024 * 1024 //1MB: increase this if you have to encrypt larger buffers
 #define SGX_AESGCM_MAC_SIZE 16   //128 bit mac
 #define SGX_AESGCM_IV_SIZE 12    // 96 bit iv
 #define CIPHERTEXT_SIZE 36
